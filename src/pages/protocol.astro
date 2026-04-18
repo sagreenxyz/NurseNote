@@ -1,0 +1,65 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+<BaseLayout title="Protocol" activePath="/protocols">
+  <div id="protocol-content">
+    <p class="text-base-content/50">Loading...</p>
+  </div>
+  <script>
+    import { getState, updateState } from '../lib/store';
+
+    const protoId = new URLSearchParams(window.location.search).get('id') ?? '';
+
+    function renderMarkdown(text: string): string {
+      return text
+        .split('\n')
+        .map(line => {
+          if (line.startsWith('## ')) return `<h3 class="text-lg font-bold mt-4 mb-1">${line.slice(3)}</h3>`;
+          if (line.startsWith('- ')) return `<li class="ml-4 list-disc">${line.slice(2)}</li>`;
+          if (line.trim() === '') return '<br>';
+          return `<p class="mb-1">${line}</p>`;
+        })
+        .join('\n');
+    }
+
+    function render() {
+      const state = getState();
+      const proto = state.protocols.find(p => p.id === protoId);
+
+      if (!proto) {
+        document.getElementById('protocol-content')!.innerHTML = `
+          <div class="alert alert-error">Protocol not found. <a href="/protocols" class="link">Back to protocols</a></div>
+        `;
+        return;
+      }
+
+      const catBadgeMap: Record<string, string> = { medication: 'badge-info', procedure: 'badge-warning', emergency: 'badge-error', assessment: 'badge-success', documentation: 'badge-ghost' };
+      const catBadge = catBadgeMap[proto.category] ?? 'badge-ghost';
+
+      document.getElementById('protocol-content')!.innerHTML = `
+        <div class="flex items-center gap-2 mb-4">
+          <a href="/protocols" class="btn btn-ghost btn-sm" aria-label="Back">&larr;</a>
+          <h1 class="text-2xl font-bold flex-1">${proto.title}</h1>
+          <button id="fav-btn" class="btn btn-ghost btn-sm" aria-label="${proto.isFavourite ? 'Unfavourite' : 'Favourite'}">${proto.isFavourite ? '[unfav]' : '[fav]'}</button>
+        </div>
+        <div class="flex flex-wrap gap-1 mb-4">
+          <span class="badge ${catBadge}">${proto.category}</span>
+          ${proto.tags.map(t => `<span class="badge badge-ghost">${t}</span>`).join('')}
+        </div>
+        <div class="prose prose-sm max-w-none">
+          ${renderMarkdown(proto.content)}
+        </div>
+      `;
+
+      document.getElementById('fav-btn')!.addEventListener('click', () => {
+        updateState(s => ({
+          ...s,
+          protocols: s.protocols.map(p => p.id === protoId ? { ...p, isFavourite: !p.isFavourite } : p),
+        }));
+        render();
+      });
+    }
+
+    render();
+  </script>
+</BaseLayout>

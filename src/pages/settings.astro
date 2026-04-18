@@ -1,0 +1,92 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+<BaseLayout title="Settings" activePath="/settings">
+  <div id="settings-content"><p class="text-base-content/50">Loading...</p></div>
+  <script>
+    import { getState, saveState, updateState } from '../lib/store';
+    import { DEFAULT_STATE } from '../lib/defaultState';
+
+    function render() {
+      const state = getState();
+      const container = document.getElementById('settings-content')!;
+      container.innerHTML = `
+        <h1 class="text-2xl font-bold mb-6">Settings</h1>
+        <div class="card bg-base-200 mb-4"><div class="card-body">
+          <h2 class="card-title">Theme</h2>
+          <div class="flex items-center gap-3">
+            <span>Dark (Night)</span>
+            <input type="checkbox" id="theme-toggle" class="toggle toggle-primary" ${state.theme === 'winter' ? 'checked' : ''} aria-label="Toggle theme" />
+            <span>Light (Winter)</span>
+          </div>
+        </div></div>
+        <div class="card bg-base-200 mb-4"><div class="card-body">
+          <h2 class="card-title">Export Data</h2>
+          <p class="text-base-content/70 text-sm">Download all your data as a JSON backup file.</p>
+          <div class="card-actions"><button id="export-btn" class="btn btn-primary btn-sm">Download backup (JSON)</button></div>
+        </div></div>
+        <div class="card bg-base-200 mb-4"><div class="card-body">
+          <h2 class="card-title">Import Data</h2>
+          <p class="text-base-content/70 text-sm">Import a JSON backup file to restore your data.</p>
+          <div class="card-actions"><label class="btn btn-secondary btn-sm cursor-pointer">Import JSON<input type="file" id="import-file" accept=".json" class="hidden" /></label></div>
+        </div></div>
+        <div class="card bg-base-200 mb-4"><div class="card-body">
+          <h2 class="card-title">Clear Old Shifts</h2>
+          <p class="text-base-content/70 text-sm">Delete shifts (and their notes/tasks) older than 30 days.</p>
+          <div class="card-actions"><button id="clear-old-btn" class="btn btn-warning btn-sm">Delete shifts older than 30 days</button></div>
+        </div></div>
+        <div class="card bg-base-200 mb-4 border border-error"><div class="card-body">
+          <h2 class="card-title text-error">Danger Zone</h2>
+          <p class="text-base-content/70 text-sm">Permanently delete all NurseNote data. This cannot be undone.</p>
+          <div class="card-actions"><button id="wipe-btn" class="btn btn-error btn-sm">Wipe all data</button></div>
+        </div></div>
+      `;
+      document.getElementById('theme-toggle')!.addEventListener('change', (e) => {
+        const newTheme = (e.target as HTMLInputElement).checked ? 'winter' : 'night';
+        updateState(s => ({ ...s, theme: newTheme }));
+        document.documentElement.setAttribute('data-theme', newTheme);
+      });
+      document.getElementById('export-btn')!.addEventListener('click', () => {
+        const s = getState();
+        const blob = new Blob([JSON.stringify(s, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url;
+        a.download = `nursenote-backup-${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(url);
+      });
+      document.getElementById('import-file')!.addEventListener('change', (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          try {
+            const imported = JSON.parse(evt.target!.result as string);
+            if (!imported.theme || !Array.isArray(imported.shifts)) { alert('Invalid backup file format.'); return; }
+            if (confirm('Replace all data with this backup?')) { saveState(imported); window.location.reload(); }
+          } catch { alert('Failed to parse JSON file.'); }
+        };
+        reader.readAsText(file);
+      });
+      document.getElementById('clear-old-btn')!.addEventListener('click', () => {
+        const s = getState(); const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
+        const oldShifts = s.shifts.filter(sh => sh.endTime && new Date(sh.endTime) < cutoff);
+        const oldShiftIds = new Set(oldShifts.map(sh => sh.id));
+        if (oldShifts.length === 0) { alert('No shifts older than 30 days found.'); return; }
+        if (confirm(`Delete ${oldShifts.length} old shift(s) and their associated notes and tasks?`)) {
+          updateState(state => ({
+            ...state,
+            shifts: state.shifts.filter(sh => !oldShiftIds.has(sh.id)),
+            notes: state.notes.filter(n => !oldShiftIds.has(n.shiftId)),
+            tasks: state.tasks.filter(t => !oldShiftIds.has(t.shiftId)),
+          }));
+          alert('Old shifts deleted successfully.'); render();
+        }
+      });
+      document.getElementById('wipe-btn')!.addEventListener('click', () => {
+        if (confirm('This will permanently delete ALL NurseNote data. Are you sure?')) {
+          const confirmText = prompt('Type "DELETE" to confirm:');
+          if (confirmText === 'DELETE') { saveState({ ...DEFAULT_STATE }); window.location.reload(); }
+        }
+      });
+    }
+    render();
+  </script>
+</BaseLayout>

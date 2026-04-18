@@ -1,0 +1,60 @@
+import type { AppState } from '../types';
+
+export const DEFAULT_STATE: AppState = {
+  theme: 'night',
+  currentShiftId: null,
+  shifts: [],
+  patients: [],
+  notes: [],
+  tasks: [],
+  protocols: [
+    {
+      id: 'proto-news2',
+      title: 'NEWS2 Scoring',
+      category: 'assessment',
+      content: '## National Early Warning Score 2\n\n## Parameters\n- Respiration rate (breaths/min)\n- Oxygen saturation (%)\n- Systolic blood pressure (mmHg)\n- Pulse rate (bpm)\n- Level of consciousness (AVPU)\n- Temperature (°C)\n\n## Scoring\n- Score 0-4: Low risk — ward-based monitoring\n- Score 5-6: Medium risk — urgent review by ward doctor\n- Score 7+: High risk — emergency review, consider ICU\n\n## Steps\n- Record all 6 parameters\n- Add individual scores\n- Escalate according to hospital protocol\n- Document time, scores, and actions taken',
+      tags: ['early warning', 'deterioration', 'vital signs'],
+      isFavourite: false,
+    },
+    {
+      id: 'proto-iv-cannulation',
+      title: 'IV Cannulation',
+      category: 'procedure',
+      content: '## IV Cannulation — Aseptic Technique\n\n## Equipment\n- Appropriate cannula gauge\n- Tourniquet\n- Alcohol wipe (70% IPA)\n- Sterile gloves\n- Transparent dressing\n- Flush (10 mL 0.9% NaCl)\n- Sharps bin at point of care\n\n## Steps\n- Explain procedure and gain consent\n- Select vein and apply tourniquet\n- Clean site with alcohol wipe — allow 30 seconds to dry\n- Don sterile gloves\n- Insert cannula at 15–30° angle, bevel up\n- Observe flashback, advance slightly, lower angle\n- Thread cannula, release tourniquet\n- Remove stylet, dispose in sharps bin immediately\n- Flush with 10 mL NaCl to confirm patency\n- Secure with transparent dressing\n- Label with date, time, gauge, and initials\n- Document in patient notes',
+      tags: ['IV', 'cannula', 'aseptic'],
+      isFavourite: false,
+    },
+    {
+      id: 'proto-falls-risk',
+      title: 'Falls Risk Assessment',
+      category: 'assessment',
+      content: '## Morse Fall Scale\n\n## Score each item\n- History of falling: No = 0, Yes = 25\n- Secondary diagnosis: No = 0, Yes = 15\n- Ambulatory aid: None/bed rest/nurse assist = 0, Crutches/cane/walker = 15, Furniture = 30\n- IV/Heparin lock: No = 0, Yes = 20\n- Gait: Normal/bed rest/wheelchair = 0, Weak = 10, Impaired = 20\n- Mental status: Knows own limits = 0, Overestimates/forgets limits = 15\n\n## Risk Levels\n- 0–24: No risk\n- 25–44: Low risk — implement standard fall prevention\n- 45+: High risk — implement high-risk fall prevention protocol\n\n## Interventions\n- Call bell within reach\n- Bed in lowest position, brakes locked\n- Non-slip footwear\n- Clear path to bathroom\n- Frequent toileting schedule\n- Yellow wristband if high risk',
+      tags: ['falls', 'safety', 'Morse'],
+      isFavourite: false,
+    },
+    {
+      id: 'proto-five-rights',
+      title: 'Medication Five Rights',
+      category: 'medication',
+      content: '## The Five Rights of Medication Administration\n\n## Rights\n- Right Patient — Check 2 identifiers (name + DOB or ID band)\n- Right Drug — Verify medication name against order\n- Right Dose — Calculate and verify dose\n- Right Route — Confirm route (oral, IV, IM, SubQ, topical)\n- Right Time — Administer at scheduled time (within 30 min window)\n\n## Additional Rights (extended)\n- Right Documentation — Sign MAR immediately after administration\n- Right Reason — Understand why the medication is prescribed\n- Right Response — Monitor for therapeutic effect and adverse reactions\n\n## Before Administration\n- Check allergies\n- Check expiry date\n- Check appearance of medication\n- Check interaction with other meds if unsure',
+      tags: ['medication', 'safety', 'rights'],
+      isFavourite: true,
+    },
+    {
+      id: 'proto-anaphylaxis',
+      title: 'Anaphylaxis Protocol',
+      category: 'emergency',
+      content: '## Anaphylaxis Protocol\n\n## Recognition\n- Skin: urticaria, flushing, angioedema\n- Respiratory: wheeze, stridor, dyspnoea\n- Cardiovascular: hypotension, tachycardia, collapse\n- GI: nausea, vomiting, abdominal pain\n\n## Immediate Actions\n- Call for help — activate emergency team\n- Remove trigger if possible\n- Position: supine with legs elevated (unless respiratory distress — then upright)\n- IM Adrenaline: 0.5 mg (0.5 mL of 1:1000) into outer thigh\n- High-flow oxygen 15 L/min via non-rebreathe mask\n- IV access — large bore, give 500–1000 mL 0.9% NaCl bolus\n- Repeat adrenaline after 5 minutes if no improvement\n\n## Secondary Treatment\n- Chlorphenamine 10 mg IV/IM\n- Hydrocortisone 200 mg IV\n- Nebulised salbutamol for bronchospasm\n\n## Documentation\n- Time of reaction, trigger, signs/symptoms\n- Time and dose of adrenaline\n- Response to treatment\n- Complete incident report',
+      tags: ['emergency', 'anaphylaxis', 'adrenaline'],
+      isFavourite: false,
+    },
+    {
+      id: 'proto-sbar',
+      title: 'SBAR Handover Template',
+      category: 'documentation',
+      content: "## SBAR Communication Tool\n\n## S — Situation\n- Who are you? Who are you calling about?\n- What is the current concern or reason for contact?\n- What is the patient's current status (stable/deteriorating/critical)?\n\n## B — Background\n- Admission diagnosis and date\n- Relevant medical history\n- Current medications\n- Recent investigations / results\n- Allergies\n\n## A — Assessment\n- Current vital signs\n- NEWS2 score\n- What do you think is happening?\n- Have you reviewed recent notes and test results?\n\n## R — Recommendation\n- What do you need from the person you are calling?\n- Suggested actions or treatments\n- Time frame for review\n- Escalation plan if no improvement",
+      tags: ['handover', 'SBAR', 'communication'],
+      isFavourite: false,
+    },
+  ],
+};

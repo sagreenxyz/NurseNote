@@ -1,0 +1,106 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+---
+<BaseLayout title="Protocols" activePath="/protocols">
+  <div id="protocols-content">
+    <p class="text-base-content/50">Loading...</p>
+  </div>
+  <script>
+    import { getState, updateState } from '../../lib/store';
+
+    let searchQuery = '';
+    let categoryFilter = 'all';
+    let searchTimeout: ReturnType<typeof setTimeout>;
+
+    function render() {
+      const state = getState();
+      let protocols = [...state.protocols];
+
+      if (categoryFilter !== 'all') protocols = protocols.filter(p => p.category === categoryFilter);
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        protocols = protocols.filter(p =>
+          p.title.toLowerCase().includes(q) ||
+          p.content.toLowerCase().includes(q) ||
+          p.tags.some((t: string) => t.toLowerCase().includes(q))
+        );
+      }
+
+      const favourites = protocols.filter(p => p.isFavourite);
+      const others = protocols.filter(p => !p.isFavourite);
+      const categories = ['all', 'medication', 'procedure', 'emergency', 'assessment', 'documentation'];
+
+      function protoCard(proto: any) {
+        const catBadgeMap: Record<string, string> = { medication: 'badge-info', procedure: 'badge-warning', emergency: 'badge-error', assessment: 'badge-success', documentation: 'badge-ghost' };
+        const catBadge = catBadgeMap[proto.category] ?? 'badge-ghost';
+        return `
+          <div class="card card-compact bg-base-200 hover:bg-base-300 transition-colors">
+            <div class="card-body p-4">
+              <div class="flex items-start justify-between">
+                <a href="/protocol?id=${proto.id}" class="flex-1">
+                  <h3 class="font-semibold">${proto.title}</h3>
+                  <div class="flex flex-wrap gap-1 mt-1">
+                    <span class="badge ${catBadge} badge-sm">${proto.category}</span>
+                    ${proto.tags.map((tag: string) => `<span class="badge badge-ghost badge-sm">${tag}</span>`).join('')}
+                  </div>
+                </a>
+                <button class="btn btn-ghost btn-sm fav-btn" data-proto-id="${proto.id}" aria-label="${proto.isFavourite ? 'Unfavourite' : 'Favourite'}">
+                  ${proto.isFavourite ? '[unfav]' : '[fav]'}
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      const container = document.getElementById('protocols-content')!;
+      container.innerHTML = `
+        <h1 class="text-2xl font-bold mb-4">Protocols</h1>
+        <div class="mb-4">
+          <input type="text" id="search" placeholder="Search protocols..." class="input input-bordered w-full" value="${searchQuery}" />
+        </div>
+        <div class="flex gap-1 overflow-x-auto pb-2 mb-4">
+          ${categories.map(c => `<button class="btn btn-sm${categoryFilter === c ? ' btn-primary' : ' btn-ghost'} cat-filter" data-cat="${c}">${c.charAt(0).toUpperCase() + c.slice(1)}</button>`).join('')}
+        </div>
+        ${favourites.length > 0 ? `
+          <h2 class="text-sm font-semibold text-base-content/50 uppercase mb-2">Favourites</h2>
+          <div class="grid gap-2 mb-4">${favourites.map(protoCard).join('')}</div>
+        ` : ''}
+        <div class="grid gap-2">
+          ${others.map(protoCard).join('')}
+          ${protocols.length === 0 ? '<p class="text-base-content/50 text-sm text-center py-8">No protocols found.</p>' : ''}
+        </div>
+      `;
+
+      const searchEl = document.getElementById('search') as HTMLInputElement;
+      searchEl.addEventListener('input', () => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+          searchQuery = searchEl.value;
+          render();
+        }, 200);
+      });
+
+      container.querySelectorAll('.cat-filter').forEach(btn => {
+        btn.addEventListener('click', () => {
+          categoryFilter = (btn as HTMLElement).dataset.cat!;
+          render();
+        });
+      });
+
+      container.querySelectorAll('.fav-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          const protoId = (btn as HTMLElement).dataset.protoId!;
+          updateState(s => ({
+            ...s,
+            protocols: s.protocols.map(p => p.id === protoId ? { ...p, isFavourite: !p.isFavourite } : p),
+          }));
+          render();
+        });
+      });
+    }
+
+    render();
+  </script>
+</BaseLayout>

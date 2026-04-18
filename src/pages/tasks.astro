@@ -1,0 +1,206 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+<BaseLayout title="Tasks" activePath="/tasks">
+  <div id="tasks-content">
+    <p class="text-base-content/50">Loading...</p>
+  </div>
+  <script>
+    import { getState, updateState } from '../lib/store';
+    import { formatTime, isOverdue, isDueSoon } from '../lib/utils';
+
+    let statusFilter = 'pending';
+    let typeFilter = 'all';
+    let timeFilter = 'all';
+
+    function render() {
+      const state = getState();
+      let tasks = [...state.tasks];
+
+      if (statusFilter !== 'all') tasks = tasks.filter(t => t.status === statusFilter);
+      if (typeFilter !== 'all') tasks = tasks.filter(t => t.type === typeFilter);
+      if (timeFilter === 'overdue') tasks = tasks.filter(t => isOverdue(t.dueTime));
+      else if (timeFilter === 'soon') tasks = tasks.filter(t => isDueSoon(t.dueTime, 60));
+      else if (timeFilter === 'none') tasks = tasks.filter(t => !t.dueTime);
+
+      const shiftTasks = tasks.filter(t => !t.patientId);
+      const patientTasks = tasks.filter(t => t.patientId);
+      const patients = state.patients;
+
+      const patientGroups = patients.filter(p => patientTasks.some(t => t.patientId === p.id)).map(p => ({
+        patient: p,
+        tasks: patientTasks.filter(t => t.patientId === p.id).sort((a, b) => {
+          if (!a.dueTime && !b.dueTime) return 0;
+          if (!a.dueTime) return 1;
+          if (!b.dueTime) return -1;
+          return new Date(a.dueTime).getTime() - new Date(b.dueTime).getTime();
+        }),
+      }));
+
+      const statusTabs = ['all', 'pending', 'done', 'skipped'];
+      const typeTabs = ['all', 'medication', 'procedure', 'assessment', 'documentation', 'other'];
+      const timeTabs = [{ value: 'all', label: 'All' }, { value: 'overdue', label: 'Overdue' }, { value: 'soon', label: 'Due soon' }, { value: 'none', label: 'No due time' }];
+
+      function taskRow(t: any) {
+        const patient = t.patientId ? patients.find((p: any) => p.id === t.patientId) : null;
+        const overdue = t.status === 'pending' && isOverdue(t.dueTime);
+        const typeBadgeMap: Record<string, string> = { medication: 'badge-info', procedure: 'badge-warning', assessment: 'badge-success', documentation: 'badge-ghost', other: 'badge-ghost' };
+        const typeBadge = typeBadgeMap[t.type as string] ?? 'badge-ghost';
+        const priorityBadge = t.priority === 'stat' ? 'badge-error' : t.priority === 'urgent' ? 'badge-warning' : 'badge-ghost';
+        return `
+          <div class="card card-compact bg-base-200 mb-2${overdue ? ' border border-error' : ''}">
+            <div class="card-body p-3">
+              <div class="flex items-center gap-3">
+                <input type="checkbox" class="checkbox task-check" data-task-id="${t.id}" ${t.status === 'done' ? 'checked' : ''} ${t.status !== 'pending' ? 'disabled' : ''} aria-label="Mark task done" />
+                <div class="flex-1">
+                  <p class="font-medium${t.status !== 'pending' ? ' line-through opacity-50' : overdue ? ' text-error' : ''}">${t.description}</p>
+                  ${patient ? `<p class="text-xs text-base-content/50">${patient.roomNumber} — ${patient.alias}</p>` : ''}
+                  <div class="flex flex-wrap gap-1 mt-1">
+                    <span class="badge ${typeBadge} badge-sm">${t.type}</span>
+                    <span class="badge ${priorityBadge} badge-sm">${t.priority}</span>
+                    ${t.dueTime ? `<span class="badge badge-ghost badge-sm${overdue ? ' text-error' : ''}">${formatTime(t.dueTime)}</span>` : ''}
+                  </div>
+                </div>
+                <button class="btn btn-ghost btn-xs skip-btn${t.status !== 'pending' ? ' hidden' : ''}" data-task-id="${t.id}" aria-label="Skip task">Skip</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      const container = document.getElementById('tasks-content')!;
+      container.innerHTML = `
+        <div class="flex items-center justify-between mb-4">
+          <h1 class="text-2xl font-bold">Tasks</h1>
+          <button id="add-task-btn" class="btn btn-primary btn-sm">+ Add Task</button>
+        </div>
+
+        <div id="add-task-form" class="card bg-base-200 mb-4 hidden">
+          <div class="card-body">
+            <h2 class="card-title">Add Shift Task</h2>
+            <form id="shift-task-form" class="flex flex-col gap-2">
+              <input type="text" id="task-desc" class="input input-bordered input-sm" placeholder="Task description" required />
+              <div class="flex gap-2">
+                <select id="task-type" class="select select-bordered select-sm flex-1">
+                  <option value="medication">Medication</option>
+                  <option value="procedure">Procedure</option>
+                  <option value="assessment">Assessment</option>
+                  <option value="documentation">Documentation</option>
+                  <option value="other">Other</option>
+                </select>
+                <select id="task-priority" class="select select-bordered select-sm flex-1">
+                  <option value="routine">Routine</option>
+                  <option value="urgent">Urgent</option>
+                  <option value="stat">STAT</option>
+                </select>
+              </div>
+              <input type="datetime-local" id="task-due" class="input input-bordered input-sm" />
+              <div class="flex gap-2">
+                <button type="submit" class="btn btn-primary btn-sm">Add</button>
+                <button type="button" id="cancel-task-btn" class="btn btn-ghost btn-sm">Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div class="filter-bar mb-4 space-y-2">
+          <div class="flex gap-1 overflow-x-auto pb-1">
+            ${statusTabs.map(s => `<button class="btn btn-sm${statusFilter === s ? ' btn-primary' : ' btn-ghost'} status-filter" data-status="${s}">${s.charAt(0).toUpperCase() + s.slice(1)}</button>`).join('')}
+          </div>
+          <div class="flex gap-1 overflow-x-auto pb-1">
+            ${typeTabs.map(s => `<button class="btn btn-sm${typeFilter === s ? ' btn-secondary' : ' btn-ghost'} type-filter" data-type="${s}">${s.charAt(0).toUpperCase() + s.slice(1)}</button>`).join('')}
+          </div>
+          <div class="flex gap-1 overflow-x-auto pb-1">
+            ${timeTabs.map(s => `<button class="btn btn-sm${timeFilter === s.value ? ' btn-accent' : ' btn-ghost'} time-filter" data-time="${s.value}">${s.label}</button>`).join('')}
+          </div>
+        </div>
+
+        <div>
+          ${shiftTasks.length > 0 ? `
+            <h2 class="text-sm font-semibold text-base-content/50 uppercase mb-2">General (Shift Tasks)</h2>
+            ${shiftTasks.map(taskRow).join('')}
+          ` : ''}
+          ${patientGroups.map(({ patient, tasks: ptasks }: any) => `
+            <h2 class="text-sm font-semibold text-base-content/50 uppercase mb-2 mt-4">${patient.roomNumber} — ${patient.alias}</h2>
+            ${ptasks.map(taskRow).join('')}
+          `).join('')}
+          ${tasks.length === 0 ? '<p class="text-base-content/50 text-sm text-center py-8">No tasks match the selected filters.</p>' : ''}
+        </div>
+      `;
+
+      container.querySelectorAll('.status-filter').forEach(btn => {
+        btn.addEventListener('click', () => {
+          statusFilter = (btn as HTMLElement).dataset.status!;
+          render();
+        });
+      });
+      container.querySelectorAll('.type-filter').forEach(btn => {
+        btn.addEventListener('click', () => {
+          typeFilter = (btn as HTMLElement).dataset.type!;
+          render();
+        });
+      });
+      container.querySelectorAll('.time-filter').forEach(btn => {
+        btn.addEventListener('click', () => {
+          timeFilter = (btn as HTMLElement).dataset.time!;
+          render();
+        });
+      });
+
+      document.getElementById('add-task-btn')!.addEventListener('click', () => {
+        document.getElementById('add-task-form')!.classList.remove('hidden');
+      });
+      document.getElementById('cancel-task-btn')!.addEventListener('click', () => {
+        document.getElementById('add-task-form')!.classList.add('hidden');
+      });
+
+      document.getElementById('shift-task-form')!.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const desc = (document.getElementById('task-desc') as HTMLInputElement).value.trim();
+        const type = (document.getElementById('task-type') as HTMLSelectElement).value as 'medication' | 'procedure' | 'assessment' | 'documentation' | 'other';
+        const priority = (document.getElementById('task-priority') as HTMLSelectElement).value as 'routine' | 'urgent' | 'stat';
+        const dueRaw = (document.getElementById('task-due') as HTMLInputElement).value;
+        updateState(s => ({
+          ...s,
+          tasks: [...s.tasks, {
+            id: crypto.randomUUID(),
+            patientId: null,
+            shiftId: s.currentShiftId ?? '',
+            description: desc,
+            dueTime: dueRaw ? new Date(dueRaw).toISOString() : null,
+            type,
+            status: 'pending',
+            priority,
+            completedAt: null,
+            notes: '',
+          }],
+        }));
+        render();
+      });
+
+      document.querySelectorAll('.task-check').forEach(el => {
+        el.addEventListener('change', (e) => {
+          const taskId = (e.target as HTMLElement).dataset.taskId!;
+          updateState(s => ({
+            ...s,
+            tasks: s.tasks.map(t => t.id === taskId ? { ...t, status: 'done', completedAt: new Date().toISOString() } : t),
+          }));
+          render();
+        });
+      });
+
+      document.querySelectorAll('.skip-btn').forEach(el => {
+        el.addEventListener('click', (e) => {
+          const taskId = (e.currentTarget as HTMLElement).dataset.taskId!;
+          updateState(s => ({
+            ...s,
+            tasks: s.tasks.map(t => t.id === taskId ? { ...t, status: 'skipped' } : t),
+          }));
+          render();
+        });
+      });
+    }
+
+    render();
+  </script>
+</BaseLayout>
