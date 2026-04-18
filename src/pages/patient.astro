@@ -1,0 +1,312 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+<BaseLayout title="Patient" activePath="/patients">
+  <div id="patient-detail-content">
+    <p class="text-base-content/50">Loading...</p>
+  </div>
+  <script>
+    import { getState, updateState } from '../lib/store';
+    import { formatRelativeTime, formatTime, isOverdue } from '../lib/utils';
+
+    const patientId = new URLSearchParams(window.location.search).get('id') ?? '';
+
+    function render(activeTab = 0) {
+      const state = getState();
+      const patient = state.patients.find(p => p.id === patientId);
+
+      if (!patient) {
+        document.getElementById('patient-detail-content')!.innerHTML = `
+          <div class="alert alert-error">Patient not found. <a href="/patients" class="link">Back to patients</a></div>
+        `;
+        return;
+      }
+
+      const notes = state.notes.filter(n => n.patientId === patientId)
+        .sort((a, b) => {
+          if (a.isPinned && !b.isPinned) return -1;
+          if (!a.isPinned && b.isPinned) return 1;
+          return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+        });
+      const tasks = state.tasks.filter(t => t.patientId === patientId);
+      const pendingTasks = tasks.filter(t => t.status === 'pending').sort((a, b) => {
+        if (!a.dueTime && !b.dueTime) return 0;
+        if (!a.dueTime) return 1;
+        if (!b.dueTime) return -1;
+        return new Date(a.dueTime).getTime() - new Date(b.dueTime).getTime();
+      });
+      const doneTasks = tasks.filter(t => t.status !== 'pending');
+      const priorityBadge = patient.priority === 'critical' ? 'badge-error' : patient.priority === 'watch' ? 'badge-warning' : 'badge-ghost';
+
+      const tabContent = [
+        `<div class="flex flex-col gap-3">
+          <div class="card bg-base-200">
+            <div class="card-body p-4">
+              <h3 class="font-semibold mb-2">Add Note</h3>
+              <form id="note-form" class="flex flex-col gap-2">
+                <select id="note-type" class="select select-bordered select-sm">
+                  <option value="clinical">Clinical</option>
+                  <option value="handoff">Handoff</option>
+                  <option value="general">General</option>
+                </select>
+                <textarea id="note-content" class="textarea textarea-bordered" rows="3" placeholder="Note (max 2000 chars)" maxlength="2000"></textarea>
+                <button type="submit" class="btn btn-primary btn-sm">Save Note</button>
+              </form>
+            </div>
+          </div>
+          ${notes.length === 0 ? '<p class="text-base-content/50 text-sm text-center py-4">No notes yet.</p>' : ''}
+          ${notes.map(n => {
+            const typeBadge = n.type === 'clinical' ? 'badge-info' : n.type === 'handoff' ? 'badge-warning' : 'badge-ghost';
+            return `
+              <div class="card bg-base-200">
+                <div class="card-body p-4">
+                  <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                      <div class="flex items-center gap-2 mb-1">
+                        <span class="badge ${typeBadge} badge-sm">${n.type}</span>
+                        <span class="text-xs text-base-content/50">${formatRelativeTime(n.timestamp)}</span>
+                        ${n.isPinned ? '<span class="text-warning text-xs">Pinned</span>' : ''}
+                      </div>
+                      <p class="text-sm whitespace-pre-wrap">${n.content}</p>
+                    </div>
+                    <button class="btn btn-ghost btn-xs pin-btn" data-note-id="${n.id}" aria-label="${n.isPinned ? 'Unpin' : 'Pin'} note">
+                      ${n.isPinned ? '<svg xmlns=\\"http://www.w3.org/2000/svg\\" class=\\"h-4 w-4 text-warning\\" viewBox=\\"0 0 20 20\\" fill=\\"currentColor\\"><path d=\\"M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z\\" /></svg>' : '<svg xmlns=\\"http://www.w3.org/2000/svg\\" class=\\"h-4 w-4\\" fill=\\"none\\" viewBox=\\"0 0 24 24\\" stroke=\\"currentColor\\"><path stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\" stroke-width=\\"2\\" d=\\"M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z\\" /></svg>'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>`,
+
+        `<div class="flex flex-col gap-3">
+          <div class="card bg-base-200">
+            <div class="card-body p-4">
+              <h3 class="font-semibold mb-2">Add Task</h3>
+              <form id="task-form" class="flex flex-col gap-2">
+                <input type="text" id="task-desc" class="input input-bordered input-sm" placeholder="Task description" required />
+                <div class="flex gap-2">
+                  <select id="task-type" class="select select-bordered select-sm flex-1">
+                    <option value="medication">Medication</option>
+                    <option value="procedure">Procedure</option>
+                    <option value="assessment">Assessment</option>
+                    <option value="documentation">Documentation</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <select id="task-priority" class="select select-bordered select-sm flex-1">
+                    <option value="routine">Routine</option>
+                    <option value="urgent">Urgent</option>
+                    <option value="stat">STAT</option>
+                  </select>
+                </div>
+                <input type="datetime-local" id="task-due" class="input input-bordered input-sm" />
+                <button type="submit" class="btn btn-primary btn-sm">Add Task</button>
+              </form>
+            </div>
+          </div>
+          ${pendingTasks.length === 0 ? '<p class="text-base-content/50 text-sm text-center py-4">No pending tasks.</p>' : ''}
+          ${pendingTasks.map(t => {
+            const overdue = isOverdue(t.dueTime);
+            const typeBadgeMap: Record<string, string> = { medication: 'badge-info', procedure: 'badge-warning', assessment: 'badge-success', documentation: 'badge-ghost', other: 'badge-ghost' };
+            const typeBadge = typeBadgeMap[t.type] ?? 'badge-ghost';
+            const priorityBadge2 = t.priority === 'stat' ? 'badge-error' : t.priority === 'urgent' ? 'badge-warning' : 'badge-ghost';
+            return `
+              <div class="card bg-base-200${overdue ? ' border border-error' : ''}">
+                <div class="card-body p-3">
+                  <div class="flex items-center gap-3">
+                    <input type="checkbox" class="checkbox task-done-check" data-task-id="${t.id}" aria-label="Mark task done" />
+                    <div class="flex-1">
+                      <p class="font-medium${overdue ? ' text-error' : ''}">${t.description}</p>
+                      <div class="flex flex-wrap gap-1 mt-1">
+                        <span class="badge ${typeBadge} badge-sm">${t.type}</span>
+                        <span class="badge ${priorityBadge2} badge-sm">${t.priority}</span>
+                        ${t.dueTime ? `<span class="badge badge-ghost badge-sm${overdue ? ' text-error' : ''}">${formatTime(t.dueTime)}</span>` : ''}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+          ${doneTasks.length > 0 ? `
+            <div class="divider">Completed</div>
+            ${doneTasks.map(t => `
+              <div class="card bg-base-200 opacity-50">
+                <div class="card-body p-3">
+                  <div class="flex items-center gap-3">
+                    <input type="checkbox" class="checkbox" checked disabled aria-label="Task done" />
+                    <div>
+                      <p class="line-through text-sm">${t.description}</p>
+                      ${t.completedAt ? `<p class="text-xs text-base-content/50">Done at ${formatTime(t.completedAt)}</p>` : ''}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          ` : ''}
+        </div>`,
+
+        `<div class="card bg-base-200">
+          <div class="card-body">
+            <form id="info-form" class="flex flex-col gap-3">
+              <div class="form-control">
+                <label class="label" for="info-room"><span class="label-text">Room</span></label>
+                <input type="text" id="info-room" class="input input-bordered" value="${patient.roomNumber}" />
+              </div>
+              <div class="form-control">
+                <label class="label" for="info-alias"><span class="label-text">Alias</span></label>
+                <input type="text" id="info-alias" class="input input-bordered" value="${patient.alias}" />
+              </div>
+              <div class="form-control">
+                <label class="label" for="info-priority"><span class="label-text">Priority</span></label>
+                <select id="info-priority" class="select select-bordered">
+                  <option value="routine"${patient.priority === 'routine' ? ' selected' : ''}>Routine</option>
+                  <option value="watch"${patient.priority === 'watch' ? ' selected' : ''}>Watch</option>
+                  <option value="critical"${patient.priority === 'critical' ? ' selected' : ''}>Critical</option>
+                </select>
+              </div>
+              <div class="form-control">
+                <label class="label" for="info-tags"><span class="label-text">Tags (comma-separated)</span></label>
+                <input type="text" id="info-tags" class="input input-bordered" value="${patient.tags.join(', ')}" />
+              </div>
+              <div class="form-control">
+                <label class="label"><span class="label-text">Admitted</span></label>
+                <p class="text-base-content/70">${new Date(patient.admittedDate).toLocaleDateString()}</p>
+              </div>
+              <button type="submit" class="btn btn-primary">Save</button>
+            </form>
+          </div>
+        </div>`,
+      ];
+
+      const container = document.getElementById('patient-detail-content')!;
+      container.innerHTML = `
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2">
+            <a href="/patients" class="btn btn-ghost btn-sm" aria-label="Back">&larr;</a>
+            <span class="text-xl font-bold">${patient.roomNumber}</span>
+            <span class="badge ${priorityBadge}">${patient.priority}</span>
+          </div>
+          <button id="discharge-btn" class="btn btn-ghost btn-sm text-error">Discharge</button>
+        </div>
+        <p class="text-base-content/70 mb-4">${patient.alias}</p>
+        <div class="flex flex-wrap gap-1 mb-4">
+          ${patient.tags.map(tag => `<span class="badge badge-ghost badge-sm">${tag}</span>`).join('')}
+        </div>
+
+        <div role="tablist" class="tabs tabs-bordered mb-4">
+          <button role="tab" class="tab${activeTab === 0 ? ' tab-active' : ''}" data-tab="0">Notes</button>
+          <button role="tab" class="tab${activeTab === 1 ? ' tab-active' : ''}" data-tab="1">Tasks</button>
+          <button role="tab" class="tab${activeTab === 2 ? ' tab-active' : ''}" data-tab="2">Info</button>
+        </div>
+        <div id="tab-content">${tabContent[activeTab]}</div>
+      `;
+
+      container.querySelectorAll('[role="tab"]').forEach(tab => {
+        tab.addEventListener('click', () => render(Number((tab as HTMLElement).dataset.tab)));
+      });
+
+      document.getElementById('discharge-btn')!.addEventListener('click', () => {
+        if (confirm('Discharge this patient? They will be removed from active patients.')) {
+          updateState(s => ({
+            ...s,
+            patients: s.patients.map(p => p.id === patientId ? { ...p, isActive: false } : p),
+          }));
+          window.location.href = '/patients';
+        }
+      });
+
+      const noteForm = document.getElementById('note-form');
+      if (noteForm) {
+        noteForm.addEventListener('submit', (e) => {
+          e.preventDefault();
+          const type = (document.getElementById('note-type') as HTMLSelectElement).value as 'clinical' | 'handoff' | 'general';
+          const content = (document.getElementById('note-content') as HTMLTextAreaElement).value.trim();
+          if (!content) return;
+          updateState(s => ({
+            ...s,
+            notes: [...s.notes, {
+              id: crypto.randomUUID(),
+              patientId,
+              shiftId: s.currentShiftId ?? '',
+              content,
+              timestamp: new Date().toISOString(),
+              type,
+              isPinned: false,
+            }],
+          }));
+          render(0);
+        });
+      }
+
+      const taskForm = document.getElementById('task-form');
+      if (taskForm) {
+        taskForm.addEventListener('submit', (e) => {
+          e.preventDefault();
+          const desc = (document.getElementById('task-desc') as HTMLInputElement).value.trim();
+          const type = (document.getElementById('task-type') as HTMLSelectElement).value as 'medication' | 'procedure' | 'assessment' | 'documentation' | 'other';
+          const priority = (document.getElementById('task-priority') as HTMLSelectElement).value as 'routine' | 'urgent' | 'stat';
+          const dueRaw = (document.getElementById('task-due') as HTMLInputElement).value;
+          if (!desc) return;
+          updateState(s => ({
+            ...s,
+            tasks: [...s.tasks, {
+              id: crypto.randomUUID(),
+              patientId,
+              shiftId: s.currentShiftId ?? '',
+              description: desc,
+              dueTime: dueRaw ? new Date(dueRaw).toISOString() : null,
+              type,
+              status: 'pending',
+              priority,
+              completedAt: null,
+              notes: '',
+            }],
+          }));
+          render(1);
+        });
+      }
+
+      document.querySelectorAll('.task-done-check').forEach(el => {
+        el.addEventListener('change', (e) => {
+          const taskId = (e.target as HTMLElement).dataset.taskId!;
+          updateState(s => ({
+            ...s,
+            tasks: s.tasks.map(t => t.id === taskId ? { ...t, status: 'done', completedAt: new Date().toISOString() } : t),
+          }));
+          render(1);
+        });
+      });
+
+      document.querySelectorAll('.pin-btn').forEach(el => {
+        el.addEventListener('click', (e) => {
+          const noteId = (e.currentTarget as HTMLElement).dataset.noteId!;
+          updateState(s => ({
+            ...s,
+            notes: s.notes.map(n => n.id === noteId ? { ...n, isPinned: !n.isPinned } : n),
+          }));
+          render(0);
+        });
+      });
+
+      const infoForm = document.getElementById('info-form');
+      if (infoForm) {
+        infoForm.addEventListener('submit', (e) => {
+          e.preventDefault();
+          const room = (document.getElementById('info-room') as HTMLInputElement).value.trim();
+          const alias = (document.getElementById('info-alias') as HTMLInputElement).value.trim();
+          const priority = (document.getElementById('info-priority') as HTMLSelectElement).value as 'routine' | 'watch' | 'critical';
+          const tagsRaw = (document.getElementById('info-tags') as HTMLInputElement).value;
+          const tags = tagsRaw.split(',').map(t => t.trim()).filter(Boolean);
+          updateState(s => ({
+            ...s,
+            patients: s.patients.map(p => p.id === patientId ? { ...p, roomNumber: room, alias, priority, tags } : p),
+          }));
+          render(2);
+        });
+      }
+    }
+
+    render();
+  </script>
+</BaseLayout>

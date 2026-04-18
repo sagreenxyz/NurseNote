@@ -1,0 +1,95 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+<BaseLayout title="Shift" activePath="/shift">
+  <div id="shift-content">
+    <p class="text-base-content/50">Loading...</p>
+  </div>
+  <script>
+    import { getState, updateState } from '../lib/store';
+    import { formatElapsed, formatTime } from '../lib/utils';
+
+    function render() {
+      const state = getState();
+      const shift = state.currentShiftId ? state.shifts.find(s => s.id === state.currentShiftId) ?? null : null;
+      const container = document.getElementById('shift-content')!;
+
+      if (shift) {
+        container.innerHTML = `
+          <h1 class="text-2xl font-bold mb-4">Active Shift</h1>
+          <div class="card bg-base-200 mb-4">
+            <div class="card-body">
+              <div class="grid grid-cols-2 gap-4">
+                <div><p class="text-sm text-base-content/70">Ward</p><p class="font-semibold text-lg">${shift.ward}</p></div>
+                <div><p class="text-sm text-base-content/70">Initials</p><p class="font-semibold text-lg">${shift.nurseInitials}</p></div>
+                <div><p class="text-sm text-base-content/70">Started</p><p class="font-semibold">${formatTime(shift.startTime)}</p></div>
+                <div><p class="text-sm text-base-content/70">Elapsed</p><p class="font-semibold" id="elapsed">${formatElapsed(shift.startTime)}</p></div>
+              </div>
+              <div class="card-actions justify-end mt-4">
+                <button id="end-shift-btn" class="btn btn-error">End Shift</button>
+              </div>
+            </div>
+          </div>
+        `;
+        setInterval(() => {
+          const el = document.getElementById('elapsed');
+          if (el) el.textContent = formatElapsed(shift.startTime);
+        }, 60000);
+        document.getElementById('end-shift-btn')!.addEventListener('click', () => {
+          if (confirm('End the current shift? Patients will be marked inactive.')) {
+            updateState(s => ({
+              ...s,
+              currentShiftId: null,
+              shifts: s.shifts.map(sh => sh.id === s.currentShiftId ? { ...sh, endTime: new Date().toISOString() } : sh),
+              patients: s.patients.map(p => ({ ...p, isActive: false })),
+            }));
+            window.location.href = '/handoff';
+          }
+        });
+      } else {
+        container.innerHTML = `
+          <h1 class="text-2xl font-bold mb-4">Start Shift</h1>
+          <div class="card bg-base-200">
+            <div class="card-body">
+              <form id="shift-form" class="flex flex-col gap-4">
+                <div class="form-control">
+                  <label class="label" for="ward"><span class="label-text">Ward</span></label>
+                  <input type="text" id="ward" name="ward" class="input input-bordered" placeholder="e.g. 4B" required />
+                </div>
+                <div class="form-control">
+                  <label class="label" for="initials"><span class="label-text">Your initials</span></label>
+                  <input type="text" id="initials" name="initials" class="input input-bordered" placeholder="e.g. JD" maxlength="4" required />
+                </div>
+                <div class="form-control">
+                  <label class="label" for="start-time"><span class="label-text">Shift start time</span></label>
+                  <input type="datetime-local" id="start-time" name="startTime" class="input input-bordered" />
+                </div>
+                <button type="submit" class="btn btn-primary">Start Shift</button>
+              </form>
+            </div>
+          </div>
+        `;
+        const startTimeInput = document.getElementById('start-time') as HTMLInputElement;
+        const now = new Date();
+        now.setSeconds(0, 0);
+        startTimeInput.value = now.toISOString().slice(0, 16);
+
+        document.getElementById('shift-form')!.addEventListener('submit', (e) => {
+          e.preventDefault();
+          const form = e.target as HTMLFormElement;
+          const ward = (form.elements.namedItem('ward') as HTMLInputElement).value.trim();
+          const initials = (form.elements.namedItem('initials') as HTMLInputElement).value.trim().toUpperCase();
+          const startTimeVal = (form.elements.namedItem('startTime') as HTMLInputElement).value || new Date().toISOString();
+          const id = crypto.randomUUID();
+          updateState(s => ({
+            ...s,
+            currentShiftId: id,
+            shifts: [...s.shifts, { id, ward, nurseInitials: initials, startTime: new Date(startTimeVal).toISOString(), endTime: null }],
+          }));
+          window.location.href = '/';
+        });
+      }
+    }
+    render();
+  </script>
+</BaseLayout>

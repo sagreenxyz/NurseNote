@@ -1,0 +1,63 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+<BaseLayout title="Handoff" activePath="/handoff">
+  <div id="handoff-content"><p class="text-base-content/50">Loading...</p></div>
+  <script>
+    import { getState } from '../lib/store';
+    import { formatTime } from '../lib/utils';
+
+    function generateHandoff(state: ReturnType<typeof getState>): string {
+      const shift = state.currentShiftId
+        ? state.shifts.find(s => s.id === state.currentShiftId)
+        : state.shifts.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())[0];
+      if (!shift) return 'No shift data available.';
+      const activePatients = state.patients.filter(p => p.isActive).sort((a, b) => {
+        const order: Record<string, number> = { critical: 0, watch: 1, routine: 2 };
+        return order[a.priority] - order[b.priority];
+      });
+      const endTime = shift.endTime ? formatTime(shift.endTime) : 'Ongoing';
+      let text = `SHIFT HANDOVER — ${shift.ward} — ${formatTime(shift.startTime)} to ${endTime}\nNurse: ${shift.nurseInitials}\n\nPATIENTS (${activePatients.length} active):\n`;
+      activePatients.forEach(p => {
+        text += `\n${p.roomNumber} — ${p.alias} — ${p.priority.toUpperCase()}\n`;
+        if (p.tags.length) text += `  Tags: ${p.tags.join(', ')}\n`;
+        const pinnedNotes = state.notes.filter(n => n.patientId === p.id && n.isPinned);
+        if (pinnedNotes.length) { text += '  Pinned notes:\n'; pinnedNotes.forEach(n => { text += `    ${n.content}\n`; }); }
+        const pendingTasks = state.tasks.filter(t => t.patientId === p.id && t.status === 'pending');
+        if (pendingTasks.length) { text += '  Pending tasks:\n'; pendingTasks.forEach(t => { text += `    [ ] ${t.description}${t.dueTime ? ` — due ${formatTime(t.dueTime)}` : ''} — ${t.type}\n`; }); }
+      });
+      const shiftTasks = state.tasks.filter(t => !t.patientId && t.status === 'pending');
+      if (shiftTasks.length) { text += '\nSHIFT-LEVEL PENDING TASKS:\n'; shiftTasks.forEach(t => { text += `  [ ] ${t.description}\n`; }); }
+      return text;
+    }
+
+    function render(isEditing = false, editedText = '') {
+      const state = getState();
+      const handoffText = editedText || generateHandoff(state);
+      const container = document.getElementById('handoff-content')!;
+      container.innerHTML = `
+        <div class="flex items-center justify-between mb-4">
+          <h1 class="text-2xl font-bold">Handoff Summary</h1>
+          <div class="flex gap-2">
+            <button id="edit-btn" class="btn btn-ghost btn-sm">${isEditing ? 'Preview' : 'Edit'}</button>
+            <button id="copy-btn" class="btn btn-ghost btn-sm">Copy</button>
+            <button id="print-btn" class="btn btn-ghost btn-sm">Print</button>
+          </div>
+        </div>
+        ${isEditing ? `<textarea id="handoff-textarea" class="textarea textarea-bordered w-full font-mono text-sm" rows="30">${handoffText}</textarea>`
+          : `<div class="card bg-base-200"><div class="card-body"><pre class="text-sm whitespace-pre-wrap font-mono">${handoffText}</pre></div></div>`}
+      `;
+      document.getElementById('edit-btn')!.addEventListener('click', () => {
+        const text = isEditing ? (document.getElementById('handoff-textarea') as HTMLTextAreaElement).value : handoffText;
+        render(!isEditing, text);
+      });
+      document.getElementById('copy-btn')!.addEventListener('click', async () => {
+        const text = isEditing ? (document.getElementById('handoff-textarea') as HTMLTextAreaElement)?.value ?? handoffText : handoffText;
+        await navigator.clipboard.writeText(text);
+        const btn = document.getElementById('copy-btn')!; btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+      });
+      document.getElementById('print-btn')!.addEventListener('click', () => { window.print(); });
+    }
+    render();
+  </script>
+</BaseLayout>
